@@ -13,12 +13,14 @@ import {
   addToCart,
   deleteFromCart,
   deleteAllFromCart,
+  logout,
 } from "../controllers/user.controller"
 
 const userRouter = express.Router()
 
 userRouter.post('/signUp', signUp)
 userRouter.post('/login', login)
+userRouter.post('/logout', logout)
 
 userRouter.post('/updateProfilePicture', updateProfilePicture)
 userRouter.get('/account', getUserAccount)

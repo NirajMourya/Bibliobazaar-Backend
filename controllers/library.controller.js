@@ -111,7 +111,8 @@ const search = (req, res, next) => {
     userId: req.user?.userId,
     lang: req.query.lang?.toLowerCase(),
     genre: req.query.genre?.toLowerCase(),
-    startIndex: req.query.startIndex ? req.query.startIndex : 0,
+    page: req.query.page ? parseInt(req.query.page) : 1,
+    limit: req.query.limit ? parseInt(req.query.limit) : 40,
     sortBy: req.query.sortBy ? req.query.sortBy : "rentExpected",
     order: req.query.order ? req.query.order : "asc"
   };

@@ -10,12 +10,9 @@ var imagekit = new ImageKit({
   urlEndpoint: process.env.IMAGEKIT_URL
 });
 
-// Temporary
-// var imagekit = new ImageKit({
-//   publicKey: "public_XG6CXMH60Rb/+2YhrO3ymBG2KnA=",
-//   privateKey: "private_HXJBqgv/JQ8zBKnPdaDunzRlFD4=",
-//   urlEndpoint: "https://ik.imagekit.io/biblioBazaar"
-// });
+if (!process.env.IMAGEKIT_PUBLIC_KEY || !process.env.IMAGEKIT_PRIVATE_KEY || !process.env.IMAGEKIT_URL) {
+  console.warn('Warning: ImageKit credentials are not fully set in environment variables')
+}
 
 const uploadService = ({ file, fileName, url }, callback) => {
   if (file === undefined || fileName === undefined) {

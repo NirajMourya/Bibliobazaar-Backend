@@ -18,13 +18,18 @@ import { RentRouter } from './routes/rentRoute'
 const app = express()
 app.use(cors());
 
-mongoose.Promise = global.Promise;
 const start = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_CONNECT)
-    app.listen(process.env.PORT, () => console.log(`Listening on port ${process.env.PORT}`))
+    const mongoUrl = process.env.MONGO_CONNECT || 'mongodb://localhost:27017/biblio-bazaar'
+    await mongoose.connect(mongoUrl, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    })
+    const port = process.env.PORT || 8080
+    app.listen(port, () => console.log(`Listening on port ${port}`))
   } catch (err) {
-    console.error(err)
+    console.error('Database connection error:', err)
+    process.exit(1)
   }
 }
 
