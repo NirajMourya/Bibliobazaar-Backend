@@ -2,86 +2,108 @@ import Library from "../models/libraryModel"
 import { getBookId, FindBookId, SearchBookId } from "../services/book.services";
 import mongoose from "mongoose";
 import { maxResults } from '../config/config'
+import { validateRequiredFields, isValidMongoId, isValidISBN } from "../utils/validators.js"
 
-const addBookService = (params, callback) => {
-  if (params.userId === undefined || params.bookName === undefined || params.author === undefined ||
-    params.isbn === undefined || params.availableBook === undefined || params.rentExpected === undefined) {
-    return callback(
-      {
-        message: "userId, bookName, author, isbn, availableBook, rentExpected",
-      },
-      ""
-    );
-  }
-  const { bookName, author, isbn, imageUrl, genre, language, description } = params;
-  getBookId({ bookName, author, isbn, imageUrl, genre, language, description }, (error, bookId) => {
-    if (error) {
-      return callback(error, "");
+// Builds a page/limit paginated response with total count metadata
+const paginateResults = (items, page, limit) => {
+  const safeLimit = Math.min(Math.max(parseInt(limit) || maxResults, 1), maxResults);
+  const safePage = Math.max(parseInt(page) || 1, 1);
+  const startIndex = (safePage - 1) * safeLimit;
+  const totalItems = items.length;
+  return {
+    items: items.slice(startIndex, startIndex + safeLimit),
+    page: safePage,
+    limit: safeLimit,
+    totalItems,
+    totalPages: Math.ceil(totalItems / safeLimit),
+  };
+}
+
+const addBookService = async (params, callback) => {
+  try {
+    // Validate required fields
+    const { isValid, missingFields } = validateRequiredFields(params, ['userId', 'bookName', 'author', 'isbn', 'availableBook', 'rentExpected'])
+    if (!isValid) {
+      return callback(
+        {
+          message: `Missing required fields: ${missingFields.join(', ')}`,
+        },
+        ""
+      );
     }
-    const Lib = Library.findOne({ userId: params.userId })
-    Lib.then((response) => {
-      if (response != null) {
-        let bookExists = false;
-        for (var index = 0; index < response.books.length; ++index) {
-          var tempBook = response.books[index];
-          if (tempBook.bookId == bookId) {
-            bookExists = true;
-            break;
+
+    // Validate ISBN format
+    if (!isValidISBN(params.isbn)) {
+      return callback(
+        {
+          message: "Invalid ISBN format",
+        },
+        ""
+      );
+    }
+
+    const { bookName, author, isbn, imageUrl, genre, language, description } = params;
+    
+    getBookId({ bookName, author, isbn, imageUrl, genre, language, description }, async (error, bookId) => {
+      if (error) {
+        return callback(error, "");
+      }
+
+      try {
+        let response = await Library.findOne({ userId: params.userId })
+        
+        if (response != null) {
+          let bookExists = false;
+          for (let index = 0; index < response.books.length; ++index) {
+            let tempBook = response.books[index];
+            if (tempBook.bookId.toString() === bookId.toString()) {
+              bookExists = true;
+              break;
+            }
           }
-        }
 
-        if (bookExists) {
-          return callback(
+          if (bookExists) {
+            return callback(
+              {
+                message: "Book already present in library",
+              },
+              ""
+            );
+          }
+
+          const updateResult = await Library.updateOne(
+            { userId: params.userId },
             {
-              message: "Book already present in library",
-            },
-            ""
-          );
-        }
-
-        Library.updateOne(
-          { userId: params.userId },
-          {
-            $push: {
-              books: {
-                "bookId": bookId,
-                "availableBook": params.availableBook,
-                "rentExpected": params.rentExpected
+              $push: {
+                books: {
+                  "bookId": bookId,
+                  "availableBook": params.availableBook,
+                  "rentExpected": params.rentExpected
+                }
               }
             }
-          },
-          function (err, docs) {
-            if (err) {
-              return callback(err, "");
-            }
-            return callback(null, docs);
-          }
-        );
+          );
+          return callback(null, updateResult);
 
-      }
-      else {
-        const Lib2 = new Library({
-          "userId": params.userId,
-          "books": {
-            "bookId": bookId,
-            "availableBook": params.availableBook,
-            "rentExpected": params.rentExpected
-          }
-        });
-        Lib2
-          .save()
-          .then((docs) => {
-            return callback(null, docs);
-          })
-          .catch((error) => {
-            return callback(error);
+        } else {
+          const Lib2 = new Library({
+            "userId": params.userId,
+            "books": {
+              "bookId": bookId,
+              "availableBook": params.availableBook,
+              "rentExpected": params.rentExpected
+            }
           });
-      }
-    })
-      .catch((error) => {
+          const docs = await Lib2.save()
+          return callback(null, docs);
+        }
+      } catch (error) {
         return callback(error);
-      });
-  });
+      }
+    });
+  } catch (error) {
+    return callback(error);
+  }
 }
 const findBookService = (params, callback) => {
   if (params.userId === undefined || params.isbn === undefined) {
@@ -285,7 +307,7 @@ const searchLibService = (params, callback) => {
           }
         }
         if (BooksItem.length == 0) {
-          return callback(null, []);
+          return callback(null, paginateResults([], params.page, params.limit));
         }
         if (params.order == "desc") {
           BooksItem.sort((a, b) => {
@@ -309,10 +331,10 @@ const searchLibService = (params, callback) => {
             return 0;
           });
         }
-        return callback(null, BooksItem.slice(params.startIndex, params.startIndex + maxResults));
+        return callback(null, paginateResults(BooksItem, params.page, params.limit));
       }
       else {
-        return callback(null, []);
+        return callback(null, paginateResults([], params.page, params.limit));
       }
     })
       .catch((error) => {
@@ -376,7 +398,7 @@ const searchLibService = (params, callback) => {
 
             }
             if (BooksItem.length == 0) {
-              return callback(null, []);
+              return callback(null, paginateResults([], params.page, params.limit));
             }
             if (params.order == "desc") {
               BooksItem.sort((a, b) => {
@@ -400,10 +422,10 @@ const searchLibService = (params, callback) => {
                 return 0;
               });
             }
-            return callback(null, BooksItem.slice(params.startIndex, params.startIndex + maxResults));
+            return callback(null, paginateResults(BooksItem, params.page, params.limit));
           }
           else {
-            return callback(null, []);
+            return callback(null, paginateResults([], params.page, params.limit));
           }
         })
           .catch((error) => {
@@ -411,7 +433,7 @@ const searchLibService = (params, callback) => {
           });
       }
       else {
-        return callback(null, []);
+        return callback(null, paginateResults([], params.page, params.limit));
       }
     });
   }

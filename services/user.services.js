@@ -2,75 +2,103 @@ import bcrypt from "bcryptjs";
 
 import { generateAccessToken } from "../middlewares/auth";
 import users from "../models/userModel"
+import { isValidEmail, validateRequiredFields, sanitizeInput } from "../utils/validators.js"
 
-const signUpService = (params, callback) => {
-  if (params.emailId === undefined || params.password === undefined || params.firstName === undefined) {
-    return callback(
-      {
-        message: "Email, Password, Username Required",
-      },
-      ""
-    );
-  }
-  const emailAddress = params.emailId.toLowerCase()
-  const user = users.findOne({ "emailId": emailAddress });
-  user.then((res) => {
-    console.log(res)
-    if (res != null) {
+const signUpService = async (params, callback) => {
+  try {
+    // Validate required fields
+    const { isValid, missingFields } = validateRequiredFields(params, ['emailId', 'password', 'firstName'])
+    if (!isValid) {
+      return callback(
+        {
+          message: `Missing required fields: ${missingFields.join(', ')}`,
+        },
+        ""
+      );
+    }
+
+    // Validate email format
+    if (!isValidEmail(params.emailId)) {
+      return callback(
+        {
+          message: "Invalid email format",
+        },
+        ""
+      );
+    }
+
+    const emailAddress = params.emailId.toLowerCase().trim()
+    const existingUser = await users.findOne({ emailId: emailAddress });
+    
+    if (existingUser != null) {
       return callback({
         message: "Email ID already in use. Try logging in."
       }, null);
     }
-    else {
-      const newUser = new users(params);
-      newUser
-        .save()
-        .then((response) => {
-          const userId = response._id.toString()
-          const token = generateAccessToken({ emailId: params.emailId, userId })
-          // return callback(null, response);
-          return callback(null, {
-            ...response.toJSON(),
-            token,
-          });
-        })
-        .catch((error) => {
-          return callback(error);
-        });
+
+    // Sanitize user input
+    const sanitizedParams = {
+      ...params,
+      emailId: emailAddress,
+      firstName: sanitizeInput(params.firstName),
+      lastName: params.lastName ? sanitizeInput(params.lastName) : null
     }
-  }).catch((error) => {
+
+    const newUser = new users(sanitizedParams);
+    const response = await newUser.save()
+    const userId = response._id.toString()
+    const token = generateAccessToken({ emailId: params.emailId, userId, tokenVersion: response.tokenVersion })
+    
+    return callback(null, {
+      ...response.toJSON(),
+      token,
+    });
+  } catch (error) {
     return callback(error);
-  });
+  }
 }
 
 const loginService = async ({ emailId, password }, callback) => {
-  if (emailId === undefined || password === undefined) {
-    return callback(
-      {
-        message: "Email, Password Required",
-      },
-      ""
-    );
-  }
-  const user = await users.findOne({ emailId });
-  if (user != null) {
-    const userId = user._id.toString()
-    if (bcrypt.compareSync(password, user.password)) {
-      const token = generateAccessToken({ emailId, userId });
-      // call toJSON method applied during model instantiation
-      return callback(null, { ...user.toJSON(), token });
-      // return callback(null, { token, userId });
+  try {
+    // Validate required fields
+    const { isValid, missingFields } = validateRequiredFields({ emailId, password }, ['emailId', 'password'])
+    if (!isValid) {
+      return callback(
+        {
+          message: `Missing required fields: ${missingFields.join(', ')}`,
+        },
+        ""
+      );
+    }
+
+    // Validate email format
+    if (!isValidEmail(emailId)) {
+      return callback(
+        {
+          message: "Invalid email format",
+        },
+        ""
+      );
+    }
+
+    const user = await users.findOne({ emailId: emailId.toLowerCase().trim() });
+    if (user != null) {
+      const userId = user._id.toString()
+      if (bcrypt.compareSync(password, user.password)) {
+        const token = generateAccessToken({ emailId, userId, tokenVersion: user.tokenVersion });
+        return callback(null, { ...user.toJSON(), token });
+      } else {
+        return callback({
+          message: "Incorrect Email ID or Password.",
+        });
+      }
     } else {
       return callback({
         message: "Incorrect Email ID or Password.",
-        //message: "Incorrect Password! Please try again.",
       });
     }
-  } else {
-    return callback({
-      message: "Incorrect Email ID or Password.",
-      //message: `No account found for ${emailId}. Try signing up.`,
-    });
+  } catch (error) {
+    return callback(error);
   }
 }
 
@@ -293,6 +321,36 @@ const deleteAllFromCartService = async ({ emailId, userId }, callback) => {
   }
 }
 
+// Increments tokenVersion so any previously issued JWTs fail authentication
+const logoutService = async ({ userId }, callback) => {
+  if (userId === undefined) {
+    return callback(
+      {
+        message: "userId required",
+      },
+      ""
+    );
+  }
+
+  try {
+    const response = await users.findByIdAndUpdate(
+      userId,
+      { $inc: { tokenVersion: 1 } },
+      { new: true }
+    );
+
+    if (!response) {
+      return callback({
+        message: "User not found",
+      });
+    }
+
+    return callback(null, { loggedOut: true });
+  } catch (error) {
+    return callback(error);
+  }
+}
+
 
 
 export {
@@ -307,5 +365,6 @@ export {
   addressListService,
   addToCartService,
   deleteFromCartService,
-  deleteAllFromCartService
+  deleteAllFromCartService,
+  logoutService
 }

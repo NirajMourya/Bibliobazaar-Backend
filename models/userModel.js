@@ -82,6 +82,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  // Incremented on logout to invalidate previously issued JWTs
+  tokenVersion: {
+    type: Number,
+    default: 0,
+  },
   cart: {
     contents: [{
       // bookId: mongoose.Schema.Types.ObjectId,

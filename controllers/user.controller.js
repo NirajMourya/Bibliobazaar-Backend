@@ -13,6 +13,7 @@ import {
   addToCartService,
   deleteFromCartService,
   deleteAllFromCartService,
+  logoutService,
 } from "../services/user.services";
 
 const signUp = (req, res, next) => {
@@ -201,6 +202,20 @@ const deleteAllFromCart = (req, res, next) => {
   });
 }
 
+const logout = (req, res, next) => {
+  const { userId } = req.user
+
+  logoutService({ userId }, (error, results) => {
+    if (error) {
+      return next(error);
+    }
+    return res.status(200).send({
+      message: "Success",
+      data: results,
+    });
+  });
+}
+
 export {
   signUp,
   login,
@@ -213,5 +228,6 @@ export {
   addressesList,
   addToCart,
   deleteFromCart,
-  deleteAllFromCart
+  deleteAllFromCart,
+  logout
 }
